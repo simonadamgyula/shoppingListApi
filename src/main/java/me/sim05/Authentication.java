@@ -8,8 +8,7 @@ import java.sql.SQLException;
 import java.util.UUID;
 
 public class Authentication {
-    public static UUID getId(HttpExchange exchange) throws SQLException, ClassNotFoundException {
-        String sessionId = getSessionId(exchange);
+    public static UUID getId(String sessionId) throws SQLException, ClassNotFoundException {
         if (sessionId == null) {
             return null;
         }
@@ -18,17 +17,19 @@ public class Authentication {
         return database.getAccountIdBySessionId(sessionId);
     }
 
-    static String getSessionId(HttpExchange exchange) {
-        JSONObject cookies = Utils.getCookies(exchange);
-        if (cookies == null) {
+    public static String checkAuthentication(JSONObject body) throws SQLException, ClassNotFoundException {
+        String sessionId = body.getString("session_id");
+        if (sessionId == null) {
             return null;
         }
-
-        return Utils.getCookie(cookies, "session_id");
+        if (!isAuthenticated(sessionId)) {
+            return null;
+        }
+        return sessionId;
     }
 
-    public static boolean isAuthenticated(HttpExchange exchange) throws SQLException, ClassNotFoundException {
-        return getId(exchange) != null;
+    public static boolean isAuthenticated(String sessionId) throws SQLException, ClassNotFoundException {
+        return getId(sessionId) != null;
     }
 
     public static UUID authenticate(String username, String password, String ipAddress) throws SQLException, ClassNotFoundException {

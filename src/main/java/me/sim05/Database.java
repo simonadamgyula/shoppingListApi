@@ -37,15 +37,16 @@ public class Database {
         return resultSet.next();
     }
 
-    public void insertUser(String username, String password) throws SQLException {
+    public void insertUser(String username, String password, String profile_picture) throws SQLException {
         if (usernameExists(username)) {
             throw new RuntimeException("Username already exists");
         }
 
-        String query = "INSERT INTO account (username, password) VALUES (?, ?)";
+        String query = "INSERT INTO account (username, password, profile_picture) VALUES (?, ?, ?)";
         PreparedStatement statement = connection.prepareStatement(query);
         statement.setString(1, username);
         statement.setString(2, password);
+        statement.setString(3, profile_picture);
         statement.executeUpdate();
     }
 
@@ -128,6 +129,51 @@ public class Database {
     //endregion
 
     //region Household
+    public JSONObject[] getHouseholds(UUID accountId) throws SQLException {
+        String query = "select household_id from account_to_household where account_id = ?";
+        PreparedStatement statement = connection.prepareStatement(query, ResultSet.TYPE_SCROLL_INSENSITIVE,
+                ResultSet.CONCUR_READ_ONLY);
+        statement.setObject(1, accountId);
+        ResultSet resultSet = statement.executeQuery();
+
+        resultSet.last();
+        int[] householdIds = new int[resultSet.getRow()];
+        resultSet.beforeFirst();
+
+        while (resultSet.next()) {
+            householdIds[resultSet.getRow() - 1] = resultSet.getInt("household_id");
+        }
+
+        JSONObject[] households = new JSONObject[householdIds.length];
+        for (int i = 0; i < householdIds.length; i++) {
+            query = "select name from household where id = ?";
+            statement = connection.prepareStatement(query);
+            statement.setInt(1, householdIds[i]);
+            resultSet = statement.executeQuery();
+            resultSet.next();
+            String householdNames = resultSet.getString("name");
+            households[i] = new JSONObject().put("id", householdIds[i]).put("name", householdNames);
+        }
+
+        return households;
+    }
+
+    public String getHousehold(Integer householdId, UUID accountId) throws SQLException {
+        boolean authorized = checkHouseholdMember(accountId, householdId);
+        if (!authorized) {
+            throw new RuntimeException("You are not an member of this household");
+        }
+
+        String query = "select name from household where id = ?";
+        PreparedStatement statement = connection.prepareStatement(query);
+        statement.setInt(1, householdId);
+        ResultSet resultSet = statement.executeQuery();
+        if (resultSet.next()) {
+            return resultSet.getString("name");
+        }
+        return null;
+    }
+
     public void createHousehold(String name, UUID account_id) throws SQLException {
         String query = "INSERT INTO household (name) VALUES (?)";
         PreparedStatement statement = connection.prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
@@ -248,6 +294,8 @@ public class Database {
         }
         Integer household_id = resultSet.getInt("id");
 
+        if (checkHouseholdMember(account_id, household_id)) throw new RuntimeException("You are already a member of this household");
+
         createAccountHouseholdConnection(account_id, household_id, "member");
     }
 
@@ -327,6 +375,8 @@ public class Database {
             item.put("name", resultSet.getString("name"));
             item.put("quantity", resultSet.getFloat("quantity"));
             item.put("measurement", resultSet.getString("measurement"));
+            item.put("bought", resultSet.getBoolean("bought"));
+            item.put("image", resultSet.getString("image"));
             items[i] = item;
             i++;
         }
@@ -343,13 +393,15 @@ public class Database {
         String name = item.getString("name");
         float quantity = item.getFloat("quantity");
         String measurement = item.getString("measurement");
+        String image = item.getString("image");
 
-        String query = "INSERT INTO items (household_id, name, quantity, measurement) VALUES (?, ?, ?, ?)";
+        String query = "INSERT INTO items (household_id, name, quantity, measurement, image) VALUES (?, ?, ?, ?, ?)";
         PreparedStatement statement = connection.prepareStatement(query);
         statement.setInt(1, householdId);
         statement.setString(2, name);
         statement.setFloat(3, quantity);
         statement.setString(4, measurement);
+        statement.setString(5, image);
         statement.executeUpdate();
     }
 
@@ -370,6 +422,20 @@ public class Database {
         statement.executeUpdate();
     }
 
+    public void setItemBought(Integer householdId, String itemName, UUID accountId, boolean bought) throws SQLException {
+        boolean authorized = checkHouseholdMember(accountId, householdId);
+        if (!authorized) {
+            throw new RuntimeException("You are not a member in this household");
+        }
+
+        String query = "UPDATE items SET bought = ? WHERE household_id = ? AND name = ?";
+        PreparedStatement statement = connection.prepareStatement(query);
+        statement.setBoolean(1, bought);
+        statement.setInt(2, householdId);
+        statement.setString(3, itemName);
+        statement.executeUpdate();
+    }
+
     public void removeItem(Integer householdId, String itemName, UUID accountId) throws SQLException {
         boolean authorized = checkHouseholdMember(accountId, householdId);
         if (!authorized) {
@@ -381,6 +447,48 @@ public class Database {
         statement.setInt(1, householdId);
         statement.setString(2, itemName);
         statement.executeUpdate();
+    }
+
+    public JSONObject getUser(UUID userId) throws SQLException {
+        String query = "select username, profile_picture from account where id = ?";
+        PreparedStatement statement = connection.prepareStatement(query);
+        statement.setObject(1, userId);
+        ResultSet resultSet = statement.executeQuery();
+        if (resultSet.next()) {
+            JSONObject user = new JSONObject();
+            user.put("username", resultSet.getString("username"));
+            user.put("profile_picture", resultSet.getString("profile_picture"));
+            return user;
+        }
+        return null;
+    }
+
+    public JSONObject[] getHouseholdUsers(Integer householdId, UUID accountId) throws SQLException {
+        boolean authorized = checkHouseholdMember(accountId, householdId);
+        if (!authorized) {
+            throw new RuntimeException("You are not a member in this household");
+        }
+
+        String query = "select account_id from account_to_household where household_id = ?";
+        PreparedStatement statement = connection.prepareStatement(query, ResultSet.TYPE_SCROLL_INSENSITIVE,
+                ResultSet.CONCUR_READ_ONLY);
+        statement.setInt(1, householdId);
+        ResultSet resultSet = statement.executeQuery();
+        if (!resultSet.next()) {
+            throw new RuntimeException("No users in this household");
+        }
+
+        resultSet.last();
+        JSONObject[] users = new JSONObject[resultSet.getRow()];
+        resultSet.beforeFirst();
+
+        while (resultSet.next()) {
+            UUID userId = resultSet.getObject("account_id", UUID.class);
+            JSONObject user = getUser(userId);
+            users[resultSet.getRow() - 1] = user;
+        }
+
+        return users;
     }
     //endregion
 }

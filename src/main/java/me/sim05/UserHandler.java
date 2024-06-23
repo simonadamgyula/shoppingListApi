@@ -47,6 +47,9 @@ public class UserHandler implements HttpHandler {
             } else
             if (url.equalsIgnoreCase("/user/authenticate")) {
                 handleAuthentication(exchange);
+            } else
+            if (url.equalsIgnoreCase("/user/get_user")) {
+                handleGetUser(exchange);
             } else {
                 HttpResponse.NotFound(exchange);
             }
@@ -54,6 +57,27 @@ public class UserHandler implements HttpHandler {
             System.out.println(e.getMessage());
             HttpResponse.BadRequest(exchange, e.getMessage().getBytes());
         }
+    }
+
+    private void handleGetUser(HttpExchange exchange) throws SQLException, ClassNotFoundException, IOException {
+        String sessionId = body.getString("session_id");
+        if (!Authentication.isAuthenticated(sessionId)) {
+            HttpResponse.Unauthorized(exchange, "Unauthorized".getBytes());
+            return;
+        }
+
+        UUID user_id = Authentication.getId(sessionId);
+        System.out.println(user_id);
+        JSONObject user = database.getUser(user_id);
+
+        if (user == null) {
+            HttpResponse.BadRequest(exchange, "User not found".getBytes());
+            return;
+        }
+
+        HttpResponse response = new HttpResponse(200);
+        response.body = user;
+        response.send(exchange);
     }
 
     void handleUsernameCheck(HttpExchange exchange) throws IOException, SQLException, ClassNotFoundException {
@@ -75,6 +99,7 @@ public class UserHandler implements HttpHandler {
 
         String username = body.getString("username");
         String password = body.getString("password");
+        String profile_picture = body.getString("profile_picture");
 
         Hash hash = new Hash(password);
         hash.generateSalt();
@@ -84,7 +109,7 @@ public class UserHandler implements HttpHandler {
 
         Database database = Database.getInstance();
         try {
-            database.insertUser(username, passwordToStore);
+            database.insertUser(username, passwordToStore, profile_picture);
         } catch (RuntimeException e) {
             HttpResponse.BadRequest(exchange, e.getMessage().getBytes());
             return;
@@ -102,8 +127,10 @@ public class UserHandler implements HttpHandler {
 
     void handleDeleteUser(HttpExchange exchange) throws IOException, SQLException, ClassNotFoundException {
         Database database = Database.getInstance();
-        UUID user_id = Authentication.getId(exchange);
-        System.out.println(user_id);
+
+        String sessionId = body.getString("session_id");
+        UUID user_id = Authentication.getId(sessionId);
+
         Integer result = database.deleteUser(user_id);
 
         if (result == 0) {

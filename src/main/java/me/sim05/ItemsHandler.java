@@ -27,17 +27,7 @@ public class ItemsHandler implements HttpHandler {
     }
 
     private void handleGet(HttpExchange exchange) throws IOException {
-        String url = exchange.getRequestURI().getPath();
-        try {
-            if (url.equalsIgnoreCase("/household/items")) {
-                handleGetItems(exchange);
-            } else {
-                HttpResponse.NotFound(exchange);
-            }
-        } catch (SQLException | ClassNotFoundException e) {
-            System.out.println(e.getMessage());
-            HttpResponse.BadRequest(exchange, e.getMessage().getBytes());
-        }
+        HttpResponse.NotFound(exchange);
     }
 
     private void handlePost(HttpExchange exchange) throws IOException {
@@ -46,11 +36,17 @@ public class ItemsHandler implements HttpHandler {
         try {
             body = Utils.getBody(exchange.getRequestBody());
 
+            if (url.equalsIgnoreCase("/household/items")) {
+                handleGetItems(exchange);
+            } else
             if (url.equalsIgnoreCase("/household/items/add")) {
                 handleAddItem(exchange);
             } else
             if (url.equalsIgnoreCase("/household/items/edit")) {
                 handleEditItem(exchange);
+            } else
+            if (url.equalsIgnoreCase("/household/items/set_bought")) {
+                handleSetItemBought(exchange);
             } else
             if (url.equalsIgnoreCase("/household/items/remove")) {
                 handleRemoveItem(exchange);
@@ -65,29 +61,37 @@ public class ItemsHandler implements HttpHandler {
     }
 
     private void handleGetItems(HttpExchange exchange) throws IOException, SQLException, ClassNotFoundException {
-        if (!Authentication.isAuthenticated(exchange)) {
+        String sessionId = body.getString("session_id");
+        if (!Authentication.isAuthenticated(sessionId)) {
             HttpResponse.Unauthorized(exchange, "Unauthorized".getBytes());
             return;
         }
 
-        JSONObject params = Utils.getQueryParams(exchange.getRequestURI().getQuery());
+        UUID accountId = Authentication.getId(sessionId);
+        Integer householdId = body.getInt("household");
 
-        UUID accountId = Authentication.getId(exchange);
-        Integer householdId = params.getInt("household");
+        JSONObject[] items;
+        try {
+            items = database.getItems(householdId, accountId);
+        } catch (RuntimeException e) {
+            HttpResponse.Forbidden(exchange, e.getMessage().getBytes());
+            return;
+        }
 
-        JSONObject[] items = database.getItems(householdId, accountId);
-
-        HttpResponse.OK(exchange, Arrays.toString(items).getBytes());
+        HttpResponse response = new HttpResponse(200);
+        response.body.put("items", Arrays.toString(items));
+        response.send(exchange);
     }
 
     private void handleAddItem(HttpExchange exchange) throws SQLException, ClassNotFoundException, IOException {
-        if (!Authentication.isAuthenticated(exchange)) {
+        String sessionId = body.getString("session_id");
+        if (!Authentication.isAuthenticated(sessionId)) {
             HttpResponse.Unauthorized(exchange, "Unauthorized".getBytes());
             return;
         }
 
-        UUID accountId = Authentication.getId(exchange);
         Integer householdId = body.getInt("household_id");
+        UUID accountId = Authentication.getId(sessionId);
         JSONObject item = body.getJSONObject("item");
 
         database.addItem(householdId, item, accountId);
@@ -96,12 +100,13 @@ public class ItemsHandler implements HttpHandler {
     }
 
     private void handleEditItem(HttpExchange exchange) throws SQLException, ClassNotFoundException, IOException {
-        if (!Authentication.isAuthenticated(exchange)) {
+        String sessionId = body.getString("session_id");
+        if (!Authentication.isAuthenticated(sessionId)) {
             HttpResponse.Unauthorized(exchange, "Unauthorized".getBytes());
             return;
         }
 
-        UUID accountId = Authentication.getId(exchange);
+        UUID accountId = Authentication.getId(sessionId);
         Integer householdId = body.getInt("household_id");
         JSONObject item = body.getJSONObject("item");
 
@@ -110,13 +115,33 @@ public class ItemsHandler implements HttpHandler {
         HttpResponse.OK(exchange, "Item edited".getBytes());
     }
 
-    private void handleRemoveItem(HttpExchange exchange) throws SQLException, ClassNotFoundException, IOException {
-        if (!Authentication.isAuthenticated(exchange)) {
+    private void handleSetItemBought(HttpExchange exchange) throws SQLException, ClassNotFoundException, IOException {
+        String sessionId = body.getString("session_id");
+        if (!Authentication.isAuthenticated(sessionId)) {
             HttpResponse.Unauthorized(exchange, "Unauthorized".getBytes());
             return;
         }
 
-        UUID accountId = Authentication.getId(exchange);
+        UUID accountId = Authentication.getId(sessionId);
+        int householdId = body.getInt("household_id");
+        String itemName = body.getString("item");
+        boolean bought = body.getBoolean("bought");
+
+        System.out.println("householdId: " + householdId);
+
+        database.setItemBought(householdId, itemName, accountId, bought);
+
+        HttpResponse.OK(exchange, "Item bought".getBytes());
+    }
+
+    private void handleRemoveItem(HttpExchange exchange) throws SQLException, ClassNotFoundException, IOException {
+        String sessionId = body.getString("session_id");
+        if (!Authentication.isAuthenticated(sessionId)) {
+            HttpResponse.Unauthorized(exchange, "Unauthorized".getBytes());
+            return;
+        }
+
+        UUID accountId = Authentication.getId(sessionId);
         Integer householdId = body.getInt("household_id");
         String itemName = body.getString("item");
 
