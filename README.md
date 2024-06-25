@@ -1,7 +1,7 @@
 # Shopping list API
 
 ### Requirements
-- You need a postgresql database to use the API. I reccomend [Supabase](https://supabase.com).
+- You need a postgresql database to use the API. I recommend [Supabase](https://supabase.com). Use the ``` schema.slq ``` file in the ``` executable ``` folder to set up your database with the required tables.
 
 ### Usage
 1. Clone this repository.
