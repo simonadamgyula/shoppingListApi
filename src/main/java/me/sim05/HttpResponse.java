@@ -6,6 +6,7 @@ import org.json.JSONObject;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 
 public class HttpResponse {
     int responseCode;
@@ -20,9 +21,10 @@ public class HttpResponse {
         Headers headers = exchange.getResponseHeaders();
         headers.set("Content-Type", "application/json");
 
-        exchange.sendResponseHeaders(responseCode, body.toString().length());
+        byte[] bs = body.toString().getBytes(StandardCharsets.UTF_8);
+        exchange.sendResponseHeaders(responseCode, bs.length);
         OutputStream os = exchange.getResponseBody();
-        os.write(body.toString().getBytes());
+        os.write(bs);
         os.close();
     }
 

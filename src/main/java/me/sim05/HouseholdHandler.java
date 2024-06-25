@@ -41,6 +41,9 @@ public class HouseholdHandler implements HttpHandler {
             if (url.equalsIgnoreCase("/household/get")) {
                 handleGetHousehold(exchange);
             } else
+            if (url.equalsIgnoreCase("/household/check_admin")) {
+                handleCheckHouseholdAdmin(exchange);
+            } else
             if (url.equalsIgnoreCase("/household/get_users")) {
                 handleGetHouseholdUsers(exchange);
             } else
@@ -61,6 +64,12 @@ public class HouseholdHandler implements HttpHandler {
             } else
             if (url.equalsIgnoreCase("/household/leave")) {
                 handleLeaveHousehold(exchange);
+            } else
+            if (url.equalsIgnoreCase("/household/set_permission")) {
+                handleSetPermission(exchange);
+            } else
+            if (url.equalsIgnoreCase("/household/kick_member")) {
+                handleKickMember(exchange);
             } else {
                 HttpResponse.NotFound(exchange);
             }
@@ -95,7 +104,7 @@ public class HouseholdHandler implements HttpHandler {
         UUID accountId = Authentication.getId(sessionId);
         Integer householdId = body.getInt("household_id");
 
-        String household;
+        JSONObject household;
         try {
             household = database.getHousehold(householdId, accountId);
         } catch (RuntimeException e) {
@@ -104,7 +113,7 @@ public class HouseholdHandler implements HttpHandler {
         }
 
         HttpResponse response = new HttpResponse(200);
-        response.body.put("household", household);
+        response.body = household;
         response.send(exchange);
     }
 
@@ -131,6 +140,29 @@ public class HouseholdHandler implements HttpHandler {
         response.send(exchange);
     }
 
+    private void handleCheckHouseholdAdmin(HttpExchange exchange) throws SQLException, ClassNotFoundException, IOException {
+        String sessionId = body.getString("session_id");
+        if (!Authentication.isAuthenticated(sessionId)) {
+            HttpResponse.Unauthorized(exchange, "Unauthorized".getBytes());
+            return;
+        }
+
+        UUID accountId = Authentication.getId(sessionId);
+        Integer householdId = body.getInt("household_id");
+
+        boolean isAdmin;
+        try {
+            isAdmin = database.householdAuthorized(householdId, accountId);
+        } catch (RuntimeException e) {
+            HttpResponse.Forbidden(exchange, e.getMessage().getBytes());
+            return;
+        }
+
+        HttpResponse response = new HttpResponse(200);
+        response.body.put("is_admin", isAdmin);
+        response.send(exchange);
+    }
+
     private void handleUpdateHousehold(HttpExchange exchange) throws SQLException, ClassNotFoundException, IOException {
         String sessionId = body.getString("session_id");
         if (!Authentication.isAuthenticated(sessionId)) {
@@ -140,10 +172,11 @@ public class HouseholdHandler implements HttpHandler {
 
         Integer householdId = body.getInt("household_id");
         String newName = body.getString("new_name");
+        int newColor = body.getInt("new_color");
         UUID accountId = Authentication.getId(sessionId);
 
         try {
-            database.updateHousehold(householdId, newName, accountId);
+            database.updateHousehold(householdId, newName, newColor, accountId);
         } catch (RuntimeException e) {
             HttpResponse.Forbidden(exchange, e.getMessage().getBytes());
             return;
@@ -160,9 +193,10 @@ public class HouseholdHandler implements HttpHandler {
         }
 
         String name = body.getString("name");
+        int color = body.getInt("color");
         UUID accountId = Authentication.getId(sessionId);
 
-        database.createHousehold(name, accountId);
+        database.createHousehold(name, color, accountId);
 
         HttpResponse.OK(exchange, "Household created".getBytes());
     }
@@ -235,5 +269,48 @@ public class HouseholdHandler implements HttpHandler {
         Integer householdId = body.getInt("household_id");
 
         database.leaveHousehold(accountId, householdId);
+    }
+
+    private void handleSetPermission(HttpExchange exchange) throws IOException, SQLException, ClassNotFoundException {
+        String sessionId = body.getString("session_id");
+        if (!Authentication.isAuthenticated(sessionId)) {
+            HttpResponse.Unauthorized(exchange, "Unauthorized".getBytes());
+            return;
+        }
+
+        UUID accountId = Authentication.getId(sessionId);
+        Integer householdId = body.getInt("household_id");
+        UUID userId = UUID.fromString(body.getString("user_id"));
+        String permission = body.getString("permission");
+
+        try {
+            database.setMemberPermission(householdId, accountId, permission, userId);
+        } catch (RuntimeException e) {
+            HttpResponse.Forbidden(exchange, e.getMessage().getBytes());
+            return;
+        }
+
+        HttpResponse.OK(exchange, "Permission set".getBytes());
+    }
+
+    private void handleKickMember(HttpExchange exchange) throws IOException, SQLException, ClassNotFoundException {
+        String sessionId = body.getString("session_id");
+        if (!Authentication.isAuthenticated(sessionId)) {
+            HttpResponse.Unauthorized(exchange, "Unauthorized".getBytes());
+            return;
+        }
+
+        Integer householdId = body.getInt("household_id");
+        UUID accountId = Authentication.getId(sessionId);
+        UUID userId = UUID.fromString(body.getString("user_id"));
+
+        try {
+            database.kickMember(householdId, accountId, userId);
+        } catch (RuntimeException e) {
+            HttpResponse.Forbidden(exchange, e.getMessage().getBytes());
+            return;
+        }
+
+        HttpResponse.OK(exchange, "Member kicked".getBytes());
     }
 }

@@ -39,6 +39,9 @@ public class UserHandler implements HttpHandler {
             if (url.equalsIgnoreCase("/user/new")) {
                 handleNewUser(exchange);
             } else
+            if (url.equalsIgnoreCase("/user/edit")) {
+                handleEditUser(exchange);
+            } else
             if (url.equalsIgnoreCase("/user/check")) {
                 handleUsernameCheck(exchange);
             } else
@@ -78,6 +81,26 @@ public class UserHandler implements HttpHandler {
         HttpResponse response = new HttpResponse(200);
         response.body = user;
         response.send(exchange);
+    }
+
+    void handleEditUser(HttpExchange exchange) throws IOException, SQLException, ClassNotFoundException {
+        String sessionId = body.getString("session_id");
+        if (!Authentication.isAuthenticated(sessionId)) {
+            HttpResponse.Unauthorized(exchange, "Unauthorized".getBytes());
+            return;
+        }
+
+        UUID user_id = Authentication.getId(sessionId);
+        String username = body.getString("username");
+        String profile_picture = body.getString("profile_picture");
+
+        Integer result = database.editUser(user_id, username, profile_picture);
+
+        if (result == 0) {
+            HttpResponse.BadRequest(exchange, "User not found".getBytes());
+        } else {
+            HttpResponse.OK(exchange, "User edited".getBytes());
+        }
     }
 
     void handleUsernameCheck(HttpExchange exchange) throws IOException, SQLException, ClassNotFoundException {

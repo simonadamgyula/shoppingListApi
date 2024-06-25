@@ -1,8 +1,10 @@
 package me.sim05;
 
+import io.github.cdimascio.dotenv.Dotenv;
 import org.json.JSONObject;
 
 import java.sql.*;
+import java.util.Map;
 import java.util.UUID;
 
 public class Database {
@@ -11,9 +13,19 @@ public class Database {
 
     //region Class (Singleton)
     private Database() throws SQLException, ClassNotFoundException {
-        String jdbcUrl = "jdbc:postgresql://aws-0-eu-central-1.pooler.supabase.com:6543/postgres";
-        String username = "postgres.shuiasyyukoohbvzecyu";
-        String password = "SimList_200";
+        Dotenv dotenv = Dotenv.load();
+        System.out.println(dotenv.toString());
+
+//        String jdbcUrl = "jdbc:postgresql://aws-0-eu-central-1.pooler.supabase.com:6543/postgres";
+//        String username = "postgres.shuiasyyukoohbvzecyu";
+//        String password = "SimList_200";
+
+        String jdbcUrl = String.format("jdbc:postgresql://%s:%s/%s",
+                dotenv.get("DB_HOST"),
+                dotenv.get("DB_PORT"),
+                dotenv.get("DB_NAME"));
+        String username = dotenv.get("DB_USER");
+        String password = dotenv.get("DB_PASS");
 
         Class.forName("org.postgresql.Driver");
 
@@ -37,6 +49,21 @@ public class Database {
         return resultSet.next();
     }
 
+    public JSONObject getUser(UUID userId) throws SQLException {
+        String query = "select id, username, profile_picture from account where id = ?";
+        PreparedStatement statement = connection.prepareStatement(query);
+        statement.setObject(1, userId);
+        ResultSet resultSet = statement.executeQuery();
+        if (resultSet.next()) {
+            JSONObject user = new JSONObject();
+            user.put("id", resultSet.getObject("id", UUID.class));
+            user.put("username", resultSet.getString("username"));
+            user.put("profile_picture", resultSet.getString("profile_picture"));
+            return user;
+        }
+        return null;
+    }
+
     public void insertUser(String username, String password, String profile_picture) throws SQLException {
         if (usernameExists(username)) {
             throw new RuntimeException("Username already exists");
@@ -48,6 +75,15 @@ public class Database {
         statement.setString(2, password);
         statement.setString(3, profile_picture);
         statement.executeUpdate();
+    }
+
+    public Integer editUser(UUID userId, String username, String profile_picture) throws SQLException {
+        String query = "UPDATE account SET username = ?, profile_picture = ? WHERE id = ?";
+        PreparedStatement statement = connection.prepareStatement(query);
+        statement.setString(1, username);
+        statement.setString(2, profile_picture);
+        statement.setObject(3, userId);
+        return statement.executeUpdate();
     }
 
     public Integer deleteUser(UUID id) throws SQLException {
@@ -146,38 +182,72 @@ public class Database {
 
         JSONObject[] households = new JSONObject[householdIds.length];
         for (int i = 0; i < householdIds.length; i++) {
-            query = "select name from household where id = ?";
+            query = "select name, color from household where id = ?";
             statement = connection.prepareStatement(query);
             statement.setInt(1, householdIds[i]);
             resultSet = statement.executeQuery();
             resultSet.next();
             String householdNames = resultSet.getString("name");
-            households[i] = new JSONObject().put("id", householdIds[i]).put("name", householdNames);
+            int householdColors = resultSet.getInt("color");
+            households[i] = new JSONObject().put("id", householdIds[i]).put("name", householdNames).put("color", householdColors);
         }
 
         return households;
     }
 
-    public String getHousehold(Integer householdId, UUID accountId) throws SQLException {
+    public JSONObject getHousehold(Integer householdId, UUID accountId) throws SQLException {
         boolean authorized = checkHouseholdMember(accountId, householdId);
         if (!authorized) {
             throw new RuntimeException("You are not an member of this household");
         }
 
-        String query = "select name from household where id = ?";
+        String query = "select name, color from household where id = ?";
         PreparedStatement statement = connection.prepareStatement(query);
         statement.setInt(1, householdId);
         ResultSet resultSet = statement.executeQuery();
         if (resultSet.next()) {
-            return resultSet.getString("name");
+            JSONObject household = new JSONObject();
+            household.put("name", resultSet.getString("name"));
+            household.put("color", resultSet.getInt("color"));
+            return household;
         }
         return null;
     }
 
-    public void createHousehold(String name, UUID account_id) throws SQLException {
-        String query = "INSERT INTO household (name) VALUES (?)";
+    public JSONObject[] getHouseholdUsers(Integer householdId, UUID accountId) throws SQLException {
+        boolean authorized = checkHouseholdMember(accountId, householdId);
+        if (!authorized) {
+            throw new RuntimeException("You are not a member in this household");
+        }
+
+        String query = "select account_id, permission from account_to_household where household_id = ?";
+        PreparedStatement statement = connection.prepareStatement(query, ResultSet.TYPE_SCROLL_INSENSITIVE,
+                ResultSet.CONCUR_READ_ONLY);
+        statement.setInt(1, householdId);
+        ResultSet resultSet = statement.executeQuery();
+        if (!resultSet.next()) {
+            throw new RuntimeException("No users in this household");
+        }
+
+        resultSet.last();
+        JSONObject[] users = new JSONObject[resultSet.getRow()];
+        resultSet.beforeFirst();
+
+        while (resultSet.next()) {
+            UUID userId = resultSet.getObject("account_id", UUID.class);
+            JSONObject user = getUser(userId);
+            user.put("permission", resultSet.getString("permission"));
+            users[resultSet.getRow() - 1] = user;
+        }
+
+        return users;
+    }
+
+    public void createHousehold(String name, int color, UUID account_id) throws SQLException {
+        String query = "INSERT INTO household (name, color) VALUES (?, ?)";
         PreparedStatement statement = connection.prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
         statement.setString(1, name);
+        statement.setInt(2, color);
         int affectedRows = statement.executeUpdate();
 
         if (affectedRows == 0) {
@@ -215,7 +285,7 @@ public class Database {
         return resultSet.next();
     }
 
-    private boolean householdAuthorized(Integer householdId, UUID accountId) throws SQLException {
+    public boolean householdAuthorized(Integer householdId, UUID accountId) throws SQLException {
         String query = "select permission from account_to_household where account_id = ? and household_id = ?";
         PreparedStatement statement = connection.prepareStatement(query);
         statement.setObject(1, accountId);
@@ -242,16 +312,17 @@ public class Database {
         statement.executeUpdate();
     }
 
-    public void updateHousehold(Integer householdId, String newName, UUID accountId) throws SQLException {
+    public void updateHousehold(Integer householdId, String newName, int newColor, UUID accountId) throws SQLException {
         boolean authorized = householdAuthorized(householdId, accountId);
         if (!authorized) {
             throw new RuntimeException("You are not an admin in this household");
         }
 
-        String query = "UPDATE household SET name = ? WHERE id = ?";
+        String query = "UPDATE household SET name = ?, color = ? WHERE id = ?";
         PreparedStatement statement = connection.prepareStatement(query);
         statement.setString(1, newName);
-        statement.setInt(2, householdId);
+        statement.setInt(2, newColor);
+        statement.setInt(3, householdId);
         statement.executeUpdate();
     }
 
@@ -350,6 +421,23 @@ public class Database {
 
         selectNewAdmin(householdId);
     }
+
+    public void kickMember(Integer householdId, UUID accountId, UUID userId) throws SQLException {
+        boolean authorized = householdAuthorized(householdId, accountId);
+        if (!authorized) {
+            throw new RuntimeException("You are not an admin in this household");
+        }
+
+        String query = "DELETE FROM account_to_household WHERE account_id = ? AND household_id = ?";
+        PreparedStatement statement = connection.prepareStatement(query);
+        statement.setObject(1, userId);
+        statement.setInt(2, householdId);
+        statement.executeUpdate();
+
+        if (checkHouseholdAdmins(householdId)) return;
+
+        selectNewAdmin(householdId);
+    }
     //endregion
 
     //region Items
@@ -373,8 +461,7 @@ public class Database {
         while (resultSet.next()) {
             JSONObject item = new JSONObject();
             item.put("name", resultSet.getString("name"));
-            item.put("quantity", resultSet.getFloat("quantity"));
-            item.put("measurement", resultSet.getString("measurement"));
+            item.put("quantity", resultSet.getString("quantity"));
             item.put("bought", resultSet.getBoolean("bought"));
             item.put("image", resultSet.getString("image"));
             items[i] = item;
@@ -391,17 +478,15 @@ public class Database {
         }
 
         String name = item.getString("name");
-        float quantity = item.getFloat("quantity");
-        String measurement = item.getString("measurement");
+        String quantity = item.getString("quantity");
         String image = item.getString("image");
 
-        String query = "INSERT INTO items (household_id, name, quantity, measurement, image) VALUES (?, ?, ?, ?, ?)";
+        String query = "INSERT INTO items (household_id, name, quantity, image) VALUES (?, ?, ?, ?)";
         PreparedStatement statement = connection.prepareStatement(query);
         statement.setInt(1, householdId);
         statement.setString(2, name);
-        statement.setFloat(3, quantity);
-        statement.setString(4, measurement);
-        statement.setString(5, image);
+        statement.setString(3, quantity);
+        statement.setString(4, image);
         statement.executeUpdate();
     }
 
@@ -447,48 +532,6 @@ public class Database {
         statement.setInt(1, householdId);
         statement.setString(2, itemName);
         statement.executeUpdate();
-    }
-
-    public JSONObject getUser(UUID userId) throws SQLException {
-        String query = "select username, profile_picture from account where id = ?";
-        PreparedStatement statement = connection.prepareStatement(query);
-        statement.setObject(1, userId);
-        ResultSet resultSet = statement.executeQuery();
-        if (resultSet.next()) {
-            JSONObject user = new JSONObject();
-            user.put("username", resultSet.getString("username"));
-            user.put("profile_picture", resultSet.getString("profile_picture"));
-            return user;
-        }
-        return null;
-    }
-
-    public JSONObject[] getHouseholdUsers(Integer householdId, UUID accountId) throws SQLException {
-        boolean authorized = checkHouseholdMember(accountId, householdId);
-        if (!authorized) {
-            throw new RuntimeException("You are not a member in this household");
-        }
-
-        String query = "select account_id from account_to_household where household_id = ?";
-        PreparedStatement statement = connection.prepareStatement(query, ResultSet.TYPE_SCROLL_INSENSITIVE,
-                ResultSet.CONCUR_READ_ONLY);
-        statement.setInt(1, householdId);
-        ResultSet resultSet = statement.executeQuery();
-        if (!resultSet.next()) {
-            throw new RuntimeException("No users in this household");
-        }
-
-        resultSet.last();
-        JSONObject[] users = new JSONObject[resultSet.getRow()];
-        resultSet.beforeFirst();
-
-        while (resultSet.next()) {
-            UUID userId = resultSet.getObject("account_id", UUID.class);
-            JSONObject user = getUser(userId);
-            users[resultSet.getRow() - 1] = user;
-        }
-
-        return users;
     }
     //endregion
 }
