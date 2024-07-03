@@ -16,10 +16,6 @@ public class Database {
         Dotenv dotenv = Dotenv.load();
         System.out.println(dotenv.toString());
 
-//        String jdbcUrl = "jdbc:postgresql://aws-0-eu-central-1.pooler.supabase.com:6543/postgres";
-//        String username = "postgres.shuiasyyukoohbvzecyu";
-//        String password = "SimList_200";
-
         String jdbcUrl = String.format("jdbc:postgresql://%s:%s/%s",
                 dotenv.get("DB_HOST"),
                 dotenv.get("DB_PORT"),
