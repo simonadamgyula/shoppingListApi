@@ -138,9 +138,7 @@ public class UserHandler implements HttpHandler {
             return;
         }
 
-        String ipAddress = exchange.getRemoteAddress().getAddress().getHostAddress();
-
-        UUID session_id = Authentication.authenticate(username, password, ipAddress);
+        UUID session_id = Authentication.authenticate(username, password);
         if (session_id == null) {
             HttpResponse.BadRequest(exchange, "Couldn't authenticate, try logging in manually".getBytes());
             return;
@@ -166,9 +164,8 @@ public class UserHandler implements HttpHandler {
     void handleAuthentication(HttpExchange exchange) throws IOException, SQLException, ClassNotFoundException {
         String username = body.getString("username");
         String password = body.getString("password");
-        String ipAddress = exchange.getRemoteAddress().getAddress().getHostAddress();
 
-        UUID sessionId = Authentication.authenticate(username, password, ipAddress);
+        UUID sessionId = Authentication.authenticate(username, password);
         if (sessionId == null) {
             HttpResponse.BadRequest(exchange, "Invalid username or password".getBytes());
         } else {

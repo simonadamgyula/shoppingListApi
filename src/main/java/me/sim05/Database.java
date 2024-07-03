@@ -128,11 +128,10 @@ public class Database {
     //endregion
 
     //region Session / Authentication
-    public UUID getSession(UUID account_id, String ip_address) throws SQLException {
-        String query = "SELECT id FROM session WHERE account_id = ? AND ip_address = ?";
+    public UUID getSession(UUID account_id) throws SQLException {
+        String query = "SELECT id FROM session WHERE account_id = ?";
         PreparedStatement statement = connection.prepareStatement(query);
         statement.setObject(1, account_id);
-        statement.setString(2, ip_address);
         ResultSet resultSet = statement.executeQuery();
         if (resultSet.next()) {
             return resultSet.getObject("id", UUID.class);
@@ -140,12 +139,11 @@ public class Database {
         return null;
     }
 
-    public UUID createSession(UUID account_id, String ip_address) throws SQLException {
-        String query = "INSERT INTO session (account_id, ip_address) VALUES (?, ?)";
+    public UUID createSession(UUID account_id) throws SQLException {
+        String query = "INSERT INTO session (account_id) VALUES (?)";
 
         PreparedStatement statement = connection.prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
         statement.setObject(1, account_id);
-        statement.setObject(2, ip_address);
 
         int affectedRows = statement.executeUpdate();
 

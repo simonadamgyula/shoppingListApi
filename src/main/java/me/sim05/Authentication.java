@@ -32,7 +32,7 @@ public class Authentication {
         return getId(sessionId) != null;
     }
 
-    public static UUID authenticate(String username, String password, String ipAddress) throws SQLException, ClassNotFoundException {
+    public static UUID authenticate(String username, String password) throws SQLException, ClassNotFoundException {
         Database database = Database.getInstance();
 
         String storedPassword = database.getPassword(username);
@@ -50,10 +50,10 @@ public class Authentication {
 
         UUID accountId = database.getAccountIdByUsername(username);
 
-        UUID sessionId = database.getSession(accountId, ipAddress);
+        UUID sessionId = database.getSession(accountId);
         if (sessionId != null) {
             return sessionId;
         }
-        return database.createSession(accountId, ipAddress);
+        return database.createSession(accountId);
     }
 }
