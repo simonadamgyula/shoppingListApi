@@ -20,6 +20,6 @@ public class Main {
         }
 
         server.start();
-        System.out.println(" Server started on port 8001");
+        System.out.println("Server started on " + dotenv.get("IP") + " 8001");
     }
 }

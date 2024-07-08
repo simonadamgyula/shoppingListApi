@@ -90,13 +90,18 @@ public class ItemsHandler implements HttpHandler {
             return;
         }
 
+        System.out.println("here");
+
         Integer householdId = body.getInt("household_id");
         UUID accountId = Authentication.getId(sessionId);
         JSONObject item = body.getJSONObject("item");
+        System.out.println("here");
 
         database.addItem(householdId, item, accountId);
+        System.out.println("here");
 
         HttpResponse.OK(exchange, "Item added".getBytes());
+        System.out.println("here");
     }
 
     private void handleEditItem(HttpExchange exchange) throws SQLException, ClassNotFoundException, IOException {

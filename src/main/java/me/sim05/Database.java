@@ -470,10 +470,12 @@ public class Database {
         if (!authorized) {
             throw new RuntimeException("You are not a member in this household");
         }
+        System.out.println("here");
 
         String name = item.getString("name");
         String quantity = item.getString("quantity");
         String image = item.getString("image");
+        System.out.println("here");
 
         String query = "INSERT INTO items (household_id, name, quantity, image) VALUES (?, ?, ?, ?)";
         PreparedStatement statement = connection.prepareStatement(query);
@@ -481,6 +483,7 @@ public class Database {
         statement.setString(2, name);
         statement.setString(3, quantity);
         statement.setString(4, image);
+        System.out.println("here");
         statement.executeUpdate();
     }
 

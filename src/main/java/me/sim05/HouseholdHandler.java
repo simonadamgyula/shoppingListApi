@@ -269,6 +269,8 @@ public class HouseholdHandler implements HttpHandler {
         Integer householdId = body.getInt("household_id");
 
         database.leaveHousehold(accountId, householdId);
+
+        HttpResponse.OK(exchange, "Left household".getBytes());
     }
 
     private void handleSetPermission(HttpExchange exchange) throws IOException, SQLException, ClassNotFoundException {
